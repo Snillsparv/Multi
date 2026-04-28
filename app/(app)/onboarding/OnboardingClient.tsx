@@ -25,30 +25,39 @@ export function OnboardingClient({
   const [name, setName] = useState(initialName);
   const [mode, setMode] = useState<"kid" | "adult">(initialMode);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const start = useSessionStore((s) => s.start);
 
   async function saveDetails(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setErrorMsg(null);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setSaving(false);
+      setErrorMsg("Inloggning saknas");
       return;
     }
-    await supabase
+    const { error } = await supabase
       .from("profiles")
       .upsert({ id: user.id, display_name: name, mode });
     setSaving(false);
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
     setStep("ready");
   }
 
   async function startDiagnostic() {
     setSaving(true);
+    setErrorMsg(null);
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       setSaving(false);
+      setErrorMsg(`Inloggning saknas: ${userError?.message ?? "ingen användare"}`);
       return;
     }
     const { data: session, error } = await supabase
@@ -58,6 +67,7 @@ export function OnboardingClient({
       .single();
     if (error || !session) {
       setSaving(false);
+      setErrorMsg(error?.message ?? "Kunde inte skapa session");
       return;
     }
     start(session.id, "diagnostic", buildDiagnosticQueue(30));
@@ -122,6 +132,9 @@ export function OnboardingClient({
               <Button type="submit" size="lg" className="w-full" disabled={saving}>
                 {saving ? "Sparar…" : "Gå vidare"}
               </Button>
+              {errorMsg && (
+                <p className="text-sm text-destructive">{errorMsg}</p>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -143,6 +156,9 @@ export function OnboardingClient({
           <Button size="lg" className="w-full" onClick={startDiagnostic} disabled={saving}>
             {saving ? "Startar…" : "Starta diagnostiskt test"}
           </Button>
+          {errorMsg && (
+            <p className="text-sm text-destructive">{errorMsg}</p>
+          )}
         </CardContent>
       </Card>
     </div>
